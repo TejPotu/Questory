@@ -1,0 +1,13 @@
+{
+    "name": "@questory/shared",
+    "version": "1.0.0",
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "scripts": {
+        "lint": "eslint \"src/**/*.ts\"",
+        "format": "prettier --write \"src/**/*.ts\""
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}
