@@ -50,6 +50,20 @@ export default {
 					'4': 'hsl(var(--chart-4))',
 					'5': 'hsl(var(--chart-5))'
 				}
+			},
+			keyframes: {
+				'scroll-bg': {
+					'0%': { backgroundPosition: '0px 0px' },
+					'100%': { backgroundPosition: '-1024px 0px' },
+				},
+				'float': {
+					'0%, 100%': { transform: 'translateY(0)' },
+					'50%': { transform: 'translateY(-10px)' },
+				}
+			},
+			animation: {
+				'scroll-bg': 'scroll-bg 30s linear infinite',
+				'float': 'float 3s ease-in-out infinite',
 			}
 		}
 	},
