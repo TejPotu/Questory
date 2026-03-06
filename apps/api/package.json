@@ -4,5 +4,11 @@
     "private": true,
     "scripts": {
         "dev": "source venv/bin/activate && uvicorn main:app --reload --port 8000"
-    }
+    },
+    "description": "",
+    "main": "index.js",
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs"
 }

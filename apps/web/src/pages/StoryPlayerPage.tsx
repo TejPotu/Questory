@@ -1,218 +1,202 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { HelpCircle, Lightbulb, BookOpen, Search } from 'lucide-react';
+import { HelpCircle, Lightbulb, Map, CircleDot, Mic, Loader2 } from 'lucide-react';
+import { useGeminiLive } from '@/hooks/useGeminiLive';
 
-// Mock Session Data
+// Mock Session Data reflecting Deep Interactive UI
 const MOCK_SCENE = {
     id: 'scene_1',
     progressPercent: 25,
-    narration: "You step out of your time machine and find yourself in a dense, humid jungle. Huge ferns tower over you, and the air is filled with strange buzzing and roars in the distance. Suddenly, you spot an enormous footprint in the mud!",
-    choices: [
-        { id: 'c1', label: 'Follow the huge footprint deeper into the jungle.' },
-        { id: 'c2', label: 'Climb a tall tree to get a better view.' },
-        { id: 'c3', label: 'Hide behind a bush and wait to see what made it.' }
+    whispers: [
+        "Let's follow the footprints!",
+        "I want to climb the tree!"
     ],
     hotspots: [
         {
             id: 'h1',
-            x: 35, // percentage
-            y: 60, // percentage
-            title: 'Dinosaur Footprint',
-            shortInfo: 'This footprint is over 3 feet long and has three massive toes, suggesting a large theropod.',
-            expandedInfo: 'Theropods were a group of bipedal saurischian dinosaurs. Although they were largely carnivorous, a number of theropod families evolved to be herbivores or omnivores. T-Rex and Velociraptors are famous examples of theropods!'
+            x: 35,
+            y: 60,
+            title: 'Theropod Footprint',
+            fact: 'Theropods were bipedal dinosaurs, meaning they walked on two legs. T-Rex is the most famous!'
         },
         {
             id: 'h2',
             x: 75,
             y: 30,
-            title: 'Giant Ferns',
-            shortInfo: 'These plants have been around for hundreds of millions of years, long before dinosaurs.',
-            expandedInfo: 'Ferns are vascular plants that reproduce via spores and have neither seeds nor flowers. They first appear in the fossil record about 360 million years ago. During the Mesozoic era, they were a dominant part of the vegetation.'
+            title: 'Mesozoic Ferns',
+            fact: 'These giant prehistoric ferns reproduce using tiny spores instead of seeds.'
         }
-    ],
-    notes: "We have arrived in the Mesozoic Era, often called the Age of Reptiles. Dinosaurs rule this world, and the plant life is completely different from what we see at home!"
+    ]
 };
 
 export function StoryPlayerPage() {
     const { sessionId } = useParams();
+    const [activeFact, setActiveFact] = useState<string | null>(null);
+    const [narration, setNarration] = useState("A sudden rustling in the giant ferns breaks the silence. A massive footprint, fresh in the mud, warns of a giant nearby.");
+    const [bgImage, setBgImage] = useState('/dreamy_forest_scene.png');
 
-    // Sheet state for expanded hotspot info
-    const [selectedHotspot, setSelectedHotspot] = useState<typeof MOCK_SCENE.hotspots[0] | null>(null);
+    const { status, connect, disconnect, isThinking, sendText } = useGeminiLive({
+        onMessage: (text) => {
+            // Very simple accumulation for subtitles. Real app might clear it on new turns.
+            setNarration(text);
+        },
+        onSceneUpdate: (imageUrl) => {
+            setBgImage(imageUrl);
+        }
+    });
+
+    const isConnected = status === 'connected';
+
+    const toggleVoice = () => {
+        if (isConnected) {
+            disconnect();
+        } else {
+            connect("You are the narrator and guide for an interactive learning story. The user is in a dreamy prehistoric forest scene. Talk to them enthusiastically. Start by describing the giant footprints and rustling ferns in 1 or 2 short sentences and ask what they want to do next. If they inspect an object, give them a fun 2-sentence educational fact. IMPORTANT: If they decide to move to a new area, use the generate_scene_image tool.");
+            setNarration("Gemini is connecting...");
+        }
+    };
+
+    // Mock speaking interaction
+    const handleHotspotClick = (fact: string) => {
+        setActiveFact(fact);
+        if (isConnected) {
+            sendText(`I'm looking at this! Please tell me a 2-sentence fact about: ${fact}`);
+        }
+        // Auto-dismiss fact after reading
+        setTimeout(() => setActiveFact(null), 8000);
+    };
 
     return (
-        <div className="flex-1 container mx-auto p-4 md:p-6 lg:max-w-7xl flex flex-col h-[calc(100vh-3.5rem)]">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-4 shrink-0">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">The Dinosaur Mystery</h1>
-                    <p className="text-sm text-slate-500">Session: {sessionId}</p>
-                </div>
-                <div className="hidden md:flex items-center gap-4 w-1/3 justify-end">
-                    <span className="text-sm font-medium text-slate-600">Scene 1 / 4</span>
-                    <Progress value={MOCK_SCENE.progressPercent} className="w-32 h-2" />
-                </div>
-            </div>
+        <div className="w-full h-screen overflow-hidden relative bg-black flex flex-col font-sans select-none">
+            {/* Absolute Background Image Layer */}
+            <div
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-[40s] ease-linear hover:scale-110 will-change-transform"
+                style={{ backgroundImage: `url('${bgImage}')` }}
+            />
+            {/* Minimal Vignettes for readability - No chunky backgrounds */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.4)_100%)] pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none" />
 
-            {/* Main Layout Grid */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-
-                {/* Left Panel: Scene Graphics & Hotspots */}
-                <div className="lg:col-span-7 xl:col-span-8 flex flex-col min-h-0 bg-slate-100 rounded-2xl border-2 border-slate-200 overflow-hidden relative shadow-inner">
-                    {/* Placeholder for actual 3D/2D visual canvas */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/10 to-emerald-900/30">
-                        {/* Using a placeholder visual pattern */}
-                        <div className="w-full h-full flex items-center justify-center opacity-40">
-                            <span className="text-9xl">🌴 🦕 🌿</span>
-                        </div>
-                    </div>
-
-                    {/* Hotspots Overlay System */}
-                    <div className="absolute inset-0 z-10 w-full h-full">
-                        {MOCK_SCENE.hotspots.map((hotspot) => (
-                            <Popover key={hotspot.id}>
-                                <PopoverTrigger asChild>
-                                    {/* Absolute positioning based on x/y coordinates */}
-                                    <button
-                                        className="absolute w-12 h-12 -ml-6 -mt-6 rounded-full bg-white/20 hover:bg-white/40 border-2 border-dashed border-white/60 hover:border-white shadow-[0_0_15px_rgba(255,255,255,0.5)] transition-all flex items-center justify-center group animate-pulse hover:animate-none group"
-                                        style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }}
-                                        aria-label={`Inspect ${hotspot.title}`}
-                                    >
-                                        <Search className="w-5 h-5 text-white/80 group-hover:text-white group-hover:scale-110 transition-transform" />
-                                    </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-80 p-4 shadow-xl border-slate-200" side="top" align="center">
-                                    <div className="space-y-3">
-                                        <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                                            <Search className="w-4 h-4 text-indigo-600" />
-                                            {hotspot.title}
-                                        </h4>
-                                        <p className="text-sm text-slate-600">
-                                            {hotspot.shortInfo}
-                                        </p>
-                                        <Button
-                                            size="sm"
-                                            className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-none"
-                                            onClick={() => setSelectedHotspot(hotspot)}
-                                        >
-                                            <BookOpen className="w-4 h-4 mr-2" />
-                                            Read More
-                                        </Button>
-                                    </div>
-                                </PopoverContent>
-                            </Popover>
-                        ))}
-                    </div>
-
-                    {/* Scene Tag */}
-                    <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow font-medium text-sm text-slate-700 border border-slate-200 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                        Living Scene
-                    </div>
-                </div>
-
-                {/* Right Panel: Story & Choices */}
-                <div className="lg:col-span-5 xl:col-span-4 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200 shadow-md">
-                    {/* Scrollable Narration Area */}
-                    <ScrollArea className="flex-1 p-6 border-b border-slate-100">
-                        <div className="space-y-4">
-                            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-wider text-xs">
-                                The Story Continues...
-                            </h2>
-                            <p className="text-slate-700 text-lg leading-relaxed">
-                                {MOCK_SCENE.narration}
-                            </p>
-                        </div>
-                    </ScrollArea>
-
-                    {/* Choices and Actions Area */}
-                    <div className="p-6 shrink-0 bg-slate-50/50 rounded-b-2xl">
-                        <div className="space-y-3 mb-6">
-                            <h3 className="text-sm font-semibold text-slate-500 uppercase">What do you do?</h3>
-                            {MOCK_SCENE.choices.map((choice) => (
-                                <Button
-                                    key={choice.id}
-                                    variant="outline"
-                                    className="w-full justify-start h-auto py-3 px-4 text-left whitespace-normal border-slate-300 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-900 transition-colors shadow-sm"
-                                >
-                                    <span className="font-medium">{choice.label}</span>
-                                </Button>
-                            ))}
-                        </div>
-
-                        <div className="flex gap-3">
-                            <Button variant="secondary" className="flex-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200 shadow-sm">
-                                <Lightbulb className="w-4 h-4 mr-2" />
-                                Ask for Hint
-                            </Button>
-                            <Button variant="secondary" className="flex-1 bg-sky-100 hover:bg-sky-200 text-sky-900 border border-sky-200 shadow-sm">
-                                <HelpCircle className="w-4 h-4 mr-2" />
-                                Explain Why
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            {/* Bottom Panel: Kid-Friendly Notes Summary */}
-            <div className="mt-6 shrink-0">
-                <Card className="border-emerald-200 bg-emerald-50/50 shadow-sm">
-                    <CardContent className="p-4 flex gap-4 items-start md:items-center flex-col md:flex-row">
-                        <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0 border border-emerald-200">
-                            <span className="text-2xl">📝</span>
-                        </div>
-                        <div className="flex-1">
-                            <h4 className="font-bold text-emerald-900 text-sm mb-1 uppercase tracking-wider">Adventure Notes</h4>
-                            <p className="text-emerald-800 font-medium">
-                                {MOCK_SCENE.notes}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Drawer for Expanded Hotspot Info */}
-            <Sheet open={!!selectedHotspot} onOpenChange={(open) => !open && setSelectedHotspot(null)}>
-                <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-                    {selectedHotspot && (
-                        <>
-                            <SheetHeader className="mb-6">
-                                <div className="w-12 h-12 bg-indigo-100 text-indigo-600 flex items-center justify-center rounded-xl mb-4">
-                                    <Search className="w-6 h-6" />
-                                </div>
-                                <SheetTitle className="text-2xl font-bold text-slate-900">
-                                    {selectedHotspot.title}
-                                </SheetTitle>
-                                <SheetDescription className="text-lg">
-                                    Learn more about what you discovered!
-                                </SheetDescription>
-                            </SheetHeader>
-
-                            <div className="prose prose-slate">
-                                <p className="text-slate-600 leading-relaxed font-medium mb-4">
-                                    {selectedHotspot.shortInfo}
-                                </p>
-                                <div className="h-px bg-slate-200 w-full my-6"></div>
-                                <h3 className="text-lg font-bold text-slate-800 mb-3">Deeper Dive</h3>
-                                <p className="text-slate-700 leading-relaxed">
-                                    {selectedHotspot.expandedInfo}
-                                </p>
-
-                                {/* Mock image placeholder for learn more drawer */}
-                                <div className="mt-8 rounded-xl bg-slate-100 flex items-center justify-center h-48 border-2 border-dashed border-slate-300">
-                                    <span className="text-slate-400 font-medium">Educational Image</span>
-                                </div>
+            {/* Top HUD: Sleek Minimal Map */}
+            <div className="absolute top-0 left-0 right-0 p-6 z-40 flex justify-between items-start pointer-events-none">
+                <div className="pointer-events-auto">
+                    <div className="flex items-center gap-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-full px-5 py-2.5 shadow-lg">
+                        <Map className="w-4 h-4 text-cyan-400" />
+                        <div className="flex flex-col gap-1 w-32">
+                            <div className="flex justify-between text-[9px] font-black uppercase text-cyan-100/70 tracking-widest">
+                                <span>Scene 1</span>
+                                <span>Of 4</span>
                             </div>
-                        </>
-                    )}
-                </SheetContent>
-            </Sheet>
+                            <Progress value={MOCK_SCENE.progressPercent} className="h-1.5 bg-slate-800/80 [&>div]:bg-gradient-to-r [&>div]:from-emerald-400 [&>div]:to-cyan-400" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Diegetic Tools */}
+                <div className="pointer-events-auto flex gap-3">
+                    <Button variant="ghost" size="icon" className="rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-white/70 hover:text-amber-400 hover:bg-amber-400/20 hover:border-amber-400/50 shadow-lg transition-all">
+                        <Lightbulb className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-white/70 hover:text-sky-400 hover:bg-sky-400/20 hover:border-sky-400/50 shadow-lg transition-all">
+                        <HelpCircle className="w-4 h-4" />
+                    </Button>
+                </div>
+            </div>
+
+            {/* Interactive World Layer (Glowing Orbs) */}
+            <div className="absolute inset-0 z-20">
+                {MOCK_SCENE.hotspots.map((hotspot) => (
+                    <button
+                        key={hotspot.id}
+                        onClick={() => handleHotspotClick(hotspot.fact)}
+                        className="absolute w-16 h-16 -ml-8 -mt-8 rounded-full border border-white/30 flex items-center justify-center group outline-none"
+                        style={{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }}
+                        aria-label={`Inspect ${hotspot.title}`}
+                    >
+                        {/* Glowing rings */}
+                        <div className="absolute inset-0 bg-emerald-400/20 rounded-full animate-ping pointer-events-none" />
+                        <div className="absolute inset-2 bg-emerald-400/40 rounded-full animate-pulse blur-sm pointer-events-none" />
+                        <div className="relative z-10 w-6 h-6 rounded-full bg-white/90 backdrop-blur-sm shadow-[0_0_20px_rgba(52,211,153,0.8)] flex items-center justify-center transition-transform duration-300 group-hover:scale-150">
+                            <CircleDot className="w-4 h-4 text-emerald-700" />
+                        </div>
+
+                        {/* Hover Tooltip - extremely minimal */}
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap hidden md:block">
+                            <span className="text-white text-xs font-bold font-mono tracking-widest uppercase">{hotspot.title}</span>
+                        </div>
+                    </button>
+                ))}
+            </div>
+
+            {/* Floating Deep Fact Panel (Replaces Sheet) */}
+            <div className={`absolute top-24 right-6 left-6 md:left-auto md:w-96 z-50 bg-slate-900/80 backdrop-blur-2xl border-l-4 border-l-emerald-400 border-t border-r border-b border-white/10 p-5 rounded-2xl shadow-2xl transition-all duration-500 ease-out transform ${activeFact ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'}`}>
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 mb-2">Gemini Noticed</h4>
+                <p className="text-white/90 text-sm leading-relaxed font-medium">
+                    "{activeFact}"
+                </p>
+            </div>
+
+            {/* Bottom HUD: Cinematic Subtitles & Voice Orb */}
+            <div className="absolute bottom-0 left-0 w-full z-30 flex flex-col items-center justify-end pb-12 px-6 pointer-events-none h-1/2">
+
+                {/* Floating "Whisper" Actions */}
+                <div className="absolute left-6 bottom-12 flex flex-col gap-3 items-start z-40 pointer-events-auto">
+                    {MOCK_SCENE.whispers.map((whisper, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => {
+                                if (isConnected) sendText(whisper);
+                            }}
+                            className="group flex items-center gap-3 text-white/50 hover:text-white transition-all duration-300 hover:translate-x-2"
+                        >
+                            <span className="opacity-0 group-hover:opacity-100 text-indigo-400 transition-opacity">*</span>
+                            <span className="text-sm md:text-base font-medium italic drop-shadow-md">"{whisper}"</span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
+                    {/* The Narration - Cinematic Subtitle Style */}
+                    <div className="text-center mb-10 md:mb-16">
+                        <p className="text-white text-xl md:text-3xl lg:text-4xl font-medium leading-tight md:leading-snug drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] max-w-3xl mx-auto transition-all duration-500">
+                            "{narration}"
+                        </p>
+                    </div>
+
+                    {/* Central Gemini Voice Orb - Pointer Events Auto */}
+                    <div className="pointer-events-auto relative mt-4">
+                        <button
+                            onClick={toggleVoice}
+                            className="relative group outline-none"
+                            aria-label="Speak to Gemini"
+                        >
+                            {/* Listening Aura */}
+                            <div className={`absolute -inset-8 rounded-full blur-xl transition-all duration-700 pointer-events-none ${isConnected ? (isThinking ? 'bg-indigo-500/40 animate-pulse' : 'bg-cyan-500/40 animate-pulse') : 'bg-transparent'}`} />
+                            <div className={`absolute -inset-4 rounded-full blur-md transition-all duration-500 pointer-events-none ${isConnected ? 'bg-cyan-500/50' : 'bg-transparent'}`} />
+
+                            {/* Orb Core */}
+                            <div className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500 ${isConnected ? (isThinking ? 'bg-indigo-500 shadow-[0_0_40px_rgba(99,102,241,0.8)] scale-110' : 'bg-white shadow-[0_0_40px_rgba(255,255,255,0.8)] scale-110') : 'bg-white/10 backdrop-blur-xl border border-white/30 hover:bg-white/20 hover:scale-105'}`}>
+                                {isConnected ? (
+                                    isThinking ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : <Mic className="w-8 h-8 text-indigo-600 animate-bounce" />
+                                ) : (
+                                    <Mic className="w-8 h-8 text-white/80" />
+                                )}
+                            </div>
+
+                            {/* Status Text */}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 whitespace-nowrap">
+                                <span className={`text-xs font-black uppercase tracking-[0.3em] ${isConnected ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(103,232,249,0.8)]' : 'text-white/40'}`}>
+                                    {isConnected ? (isThinking ? 'Thinking...' : 'Listening...') : 'Tap to Connect'}
+                                </span>
+                            </div>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
 
         </div>
     );

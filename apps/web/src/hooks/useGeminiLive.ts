@@ -6,11 +6,14 @@ type GamePhase = 'topic' | 'style' | 'settings' | 'ready'; // Added phases for g
 interface UseGeminiLiveProps {
     onMessage?: (text: string, isFinal: boolean) => void;
     onFunctionCall?: (name: string, args: any) => void;
+    // New callback to receive image updates from the proxy backend
+    onSceneUpdate?: (imageUrl: string) => void;
 }
 
-export function useGeminiLive({ onMessage, onFunctionCall }: UseGeminiLiveProps = {}) {
+export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseGeminiLiveProps = {}) {
+    // ... [Status hooks mostly unchanged]
     const [status, setStatus] = useState<GeminiLiveStatus>('disconnected');
-    const [gamePhase, setGamePhase] = useState<GamePhase>('topic'); // Track what Gemini is asking for
+    const [gamePhase, setGamePhase] = useState<GamePhase>('topic');
     const [isThinking, setIsThinking] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
@@ -18,85 +21,38 @@ export function useGeminiLive({ onMessage, onFunctionCall }: UseGeminiLiveProps 
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const processorNodeRef = useRef<AudioWorkletNode | null>(null);
 
-    // Playback
     const nextPlayTimeRef = useRef<number>(0);
 
     const connect = useCallback(async (systemInstruction?: string) => {
         try {
             setStatus('connecting');
 
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) {
-                console.error("VITE_GEMINI_API_KEY is missing from environment variables");
-                setStatus('error');
-                return;
-            }
+            // Hardcode a session ID for demo purposes, or pass it in later
+            const sessionId = Math.random().toString(36).substring(7);
+            const url = `ws://localhost:8000/api/live/${sessionId}`;
 
-            const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
             const ws = new WebSocket(url);
             wsRef.current = ws;
 
             ws.onopen = async () => {
                 setStatus('connected');
-
-                // Send initial setup message
-                const setupMessage = {
-                    setup: {
-                        model: "models/gemini-2.0-flash-exp",
-                        generationConfig: {
-                            responseModalities: ["audio"],
-                            speechConfig: {
-                                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
-                            }
-                        },
-                        systemInstruction: systemInstruction ? {
-                            parts: [{ text: systemInstruction }]
-                        } : undefined,
-                        tools: [{
-                            functionDeclarations: [
-                                {
-                                    name: "setTopic",
-                                    description: "Sets the story topic based on user input and advances to the next step.",
-                                    parameters: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            topic: { type: "STRING", description: "The learning topic the user wants." }
-                                        },
-                                        required: ["topic"]
-                                    }
-                                },
-                                {
-                                    name: "setStyle",
-                                    description: "Sets the visual and narrator style of the story.",
-                                    parameters: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            character: { type: "STRING", description: "The main character (e.g. Brave Knight, Curious Astronaut)." },
-                                            artStyle: { type: "STRING", description: "Visual style (e.g. Vibrant 3D, Anime / Manga)." }
-                                        },
-                                        required: ["character", "artStyle"]
-                                    }
-                                },
-                                {
-                                    name: "setSettings",
-                                    description: "Sets the difficulty and quiz frequency for the story.",
-                                    parameters: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            ageRange: { type: "INTEGER", description: "Target age. 0=Pre-K, 1=Early, 2=Mid, 3=Late, 4=Teen", default: 2 },
-                                            quizFrequency: { type: "STRING", description: "low, medium, or high", default: "medium" }
-                                        },
-                                        required: ["ageRange", "quizFrequency"]
-                                    }
-                                }
-                            ]
-                        }]
-                    }
-                };
-                ws.send(JSON.stringify(setupMessage));
-
-                // init mic
+                // The backend handles sending the configuration setup message.
+                // It automatically builds the Session config with instructions & tools.
+                // We just start pushing Audio!
                 await startMicrophone(ws);
+
+                // If there's an initial instruction (like for the Create page), send it as a text turn
+                if (systemInstruction) {
+                    ws.send(JSON.stringify({
+                        clientContent: {
+                            turns: [{
+                                role: "user",
+                                parts: [{ text: systemInstruction }]
+                            }],
+                            turnComplete: true
+                        }
+                    }));
+                }
             };
 
             ws.onmessage = async (event) => {
@@ -108,6 +64,18 @@ export function useGeminiLive({ onMessage, onFunctionCall }: UseGeminiLiveProps 
                     data = JSON.parse(event.data);
                 }
 
+                // 1. Handle Custom Proxy Events (ex: Nano Banana images)
+                if (data.backendEvent) {
+                    if (data.backendEvent.type === 'scene_update' && data.backendEvent.imageUrl) {
+                        onSceneUpdate?.(data.backendEvent.imageUrl);
+                    }
+                    if (data.backendEvent.type === 'image_generation_started') {
+                        setIsThinking(true); // show the UI generating state
+                    }
+                    return;
+                }
+
+                // 2. Handle standard Gemini format (relayed by proxy)
                 if (data.serverContent) {
                     const modelTurn = data.serverContent.modelTurn;
                     if (modelTurn) {
@@ -116,7 +84,6 @@ export function useGeminiLive({ onMessage, onFunctionCall }: UseGeminiLiveProps 
                                 onMessage?.(part.text, false);
                             }
                             if (part.inlineData && part.inlineData.data) {
-                                // play audio
                                 await playAudioChunk(part.inlineData.data);
                             }
                         }
@@ -130,13 +97,12 @@ export function useGeminiLive({ onMessage, onFunctionCall }: UseGeminiLiveProps 
                     for (const call of data.toolCall.functionCalls) {
                         onFunctionCall?.(call.name, call.args);
 
-                        // Automatically update the UI phase based on Gemini's tool calls
                         if (call.name === 'setTopic') setGamePhase('style');
                         if (call.name === 'setStyle') setGamePhase('settings');
                         if (call.name === 'setSettings') setGamePhase('ready');
                     }
 
-                    // Reply to the tool call
+                    // For frontend tools, we still reply via the proxy
                     ws.send(JSON.stringify({
                         toolResponse: {
                             functionResponses: data.toolCall.functionCalls.map((c: any) => ({
@@ -163,7 +129,7 @@ export function useGeminiLive({ onMessage, onFunctionCall }: UseGeminiLiveProps 
             console.error(error);
             setStatus('error');
         }
-    }, [onMessage, onFunctionCall]);
+    }, [onMessage, onFunctionCall, onSceneUpdate]);
 
     const playAudioChunk = async (base64Data: string) => {
         if (!audioContextRef.current) return;

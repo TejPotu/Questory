@@ -1,26 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from src.routers import live_router
 
-class HealthResponse(BaseModel):
-    status: str
-    version: str
+app = FastAPI(title="Questory Backend")
 
-app = FastAPI(
-    title="Questory API",
-    description="Backend API for Interactive Learning Storyworld",
-    version="1.0.0",
-)
-
-# Allow CORS for local development
+# We must allow all origins since the frontend is likely running on a different port (e.g. 5173 or 3000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/health", response_model=HealthResponse)
+app.include_router(live_router.router, prefix="/api")
+
+@app.get("/health")
 async def health_check():
-    return HealthResponse(status="ok", version="1.0.0")
+    return {"status": "healthy", "service": "questory-api"}
