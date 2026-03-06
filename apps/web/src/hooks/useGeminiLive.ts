@@ -17,6 +17,7 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
     const [isThinking, setIsThinking] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
+    const micCtxRef = useRef<AudioContext | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const processorNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -88,9 +89,7 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
                             }
                         }
                     }
-                    if (data.serverContent.turnComplete) {
-                        setIsThinking(false);
-                    }
+                    // isThinking clears via source.onended when playback finishes
                 }
 
                 if (data.toolCall) {
@@ -150,6 +149,12 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
                 channelData[i] = pcm16[i] / 32768.0;
             }
 
+            // Resume the AudioContext if the browser suspended it (autoplay policy)
+            if (ctx.state === 'suspended') {
+                console.warn('[Audio] AudioContext was suspended, resuming...');
+                await ctx.resume();
+            }
+
             const source = ctx.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(ctx.destination);
@@ -158,7 +163,14 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
             const playTime = Math.max(currentTime, nextPlayTimeRef.current);
             source.start(playTime);
             nextPlayTimeRef.current = playTime + audioBuffer.duration;
+
+            // Show "Thinking/Speaking" state while audio is playing; clear when the last chunk finishes
             setIsThinking(true);
+            source.onended = () => {
+                if (ctx.currentTime >= nextPlayTimeRef.current - 0.05) {
+                    setIsThinking(false);
+                }
+            };
         } catch (err) {
             console.error("Error playing audio chunk", err);
         }
@@ -166,26 +178,44 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
 
     const startMicrophone = async (ws: WebSocket) => {
         try {
+            console.log('[Mic] Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
                     sampleRate: 16000,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
                 }
             });
             mediaStreamRef.current = stream;
+            console.log('[Mic] Got media stream:', stream.getAudioTracks()[0]?.getSettings());
 
-            const audioCtx = new window.AudioContext({ sampleRate: 16000 });
-            audioContextRef.current = audioCtx;
-            nextPlayTimeRef.current = audioCtx.currentTime;
+            // Use a SEPARATE AudioContext for mic capture at 16kHz
+            const micCtx = new window.AudioContext({ sampleRate: 16000 });
+            micCtxRef.current = micCtx;
+            console.log('[Mic] Mic AudioContext created. Actual sample rate:', micCtx.sampleRate);
 
-            await audioCtx.audioWorklet.addModule('/audio-processor.js');
+            // Create the playback AudioContext at 24kHz (Gemini's output rate)
+            const playbackCtx = new window.AudioContext({ sampleRate: 24000 });
+            audioContextRef.current = playbackCtx;
+            nextPlayTimeRef.current = playbackCtx.currentTime;
 
-            const source = audioCtx.createMediaStreamSource(stream);
-            const processor = new AudioWorkletNode(audioCtx, 'audio-processor');
+            await micCtx.audioWorklet.addModule('/audio-processor.js');
+            console.log('[Mic] AudioWorklet module loaded.');
 
+            const source = micCtx.createMediaStreamSource(stream);
+            const processor = new AudioWorkletNode(micCtx, 'audio-processor');
+
+            let chunkCount = 0;
             processor.port.onmessage = (e) => {
                 const pcm16Data = e.data; // Int16Array
                 const base64Str = btoa(String.fromCharCode(...new Uint8Array(pcm16Data.buffer)));
+
+                chunkCount++;
+                if (chunkCount % 50 === 1) {
+                    console.log(`[Mic] Sending audio chunk #${chunkCount} (${pcm16Data.length} samples)`);
+                }
 
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
@@ -200,11 +230,13 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
             };
 
             source.connect(processor);
-            processor.connect(audioCtx.destination);
+            // Don't connect processor to destination — we don't want to hear our own mic
+            // processor.connect(micCtx.destination);
             processorNodeRef.current = processor;
+            console.log('[Mic] Audio pipeline connected. Listening for audio data...');
 
         } catch (e) {
-            console.error("Error starting microphone", e);
+            console.error("[Mic] Error starting microphone:", e);
         }
     };
 
@@ -216,6 +248,10 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
         if (processorNodeRef.current) {
             processorNodeRef.current.disconnect();
             processorNodeRef.current = null;
+        }
+        if (micCtxRef.current) {
+            micCtxRef.current.close().catch(console.error);
+            micCtxRef.current = null;
         }
         if (audioContextRef.current) {
             audioContextRef.current.close().catch(console.error);

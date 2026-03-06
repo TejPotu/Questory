@@ -22,3 +22,8 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
+
+
+backend/*
+CLAUDE.md
+backend
