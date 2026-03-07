@@ -258,8 +258,8 @@ async def proxy_gemini_live_session(client_ws: WebSocket, session_id: str):
                             if response.tool_call:
                                 for function_call in response.tool_call.function_calls:
                                     name = function_call.name
-                                    args = function_call.args
-                                    print(f"[{session_id}] Gemini requested tool: {name} with args: {args}")
+                                    args = function_call.args if isinstance(function_call.args, dict) else (function_call.args.to_dict() if hasattr(function_call.args, 'to_dict') else dict(function_call.args))
+                                    print(f"[{session_id}] Gemini requested tool: {name} with parsed args: {args}")
 
                                     if name == "generate_scene_image":
                                         visual_description = args.get("visual_description", "")
@@ -297,30 +297,45 @@ async def proxy_gemini_live_session(client_ws: WebSocket, session_id: str):
                                     elif name == "propose_heroes":
                                         concept = args.get("concept", "")
                                         heroes = args.get("heroes", [])
+                                        # Convert heroes to a list of dicts safely in case they are Protobuf Structs
+                                        parsed_heroes = []
+                                        for h in heroes:
+                                            if hasattr(h, 'to_dict'):
+                                                parsed_heroes.append(h.to_dict())
+                                            elif isinstance(h, dict):
+                                                parsed_heroes.append(h)
+                                            else:
+                                                parsed_heroes.append(dict(h)) # Attempt coercion
 
                                         # 1. Immediately send the text concepts to the frontend
                                         await safe_send({
                                             "backendEvent": {
                                                 "type": "heroes_proposed",
                                                 "concept": concept,
-                                                "heroes": [{"id": h.get("id"), "name": h.get("name"), "description": h.get("description")} for h in heroes]
+                                                "heroes": [{"id": h.get("id", f"hero_{i}"), "name": h.get("name", "Unknown"), "description": h.get("description", "")} for i, h in enumerate(parsed_heroes)]
                                             }
                                         })
 
                                         # 2. Concurrently generate images for all 3 heroes
-                                        async def generate_and_send(hero):
-                                            url = await generate_image(hero.get('visual_description'), is_character=True)
-                                            if url:
-                                                await safe_send({
-                                                    "backendEvent": {
-                                                        "type": "hero_image_generated",
-                                                        "id": hero.get("id"),
-                                                        "imageUrl": url
-                                                    }
-                                                })
+                                        async def generate_and_send(hero_data):
+                                            try:
+                                                print(f"[{session_id}] [Thread] Generating image for hero: {hero_data.get('name')}")
+                                                visual_desc = hero_data.get('visual_description', '')
+                                                url = await generate_image(visual_desc, is_character=True)
+                                                if url:
+                                                    print(f"[{session_id}] [Thread] Sending generated image for hero: {hero_data.get('name')}")
+                                                    await safe_send({
+                                                        "backendEvent": {
+                                                            "type": "hero_image_generated",
+                                                            "id": hero_data.get("id"),
+                                                            "imageUrl": url
+                                                        }
+                                                    })
+                                            except Exception as task_e:
+                                                print(f"[{session_id}] [Thread] Error generating hero image: {task_e}")
                                         
                                         # Fire off the generation tasks without blocking the main loop
-                                        for h in heroes:
+                                        for h in parsed_heroes:
                                             asyncio.create_task(generate_and_send(h))
 
                                         # 3. Tell Gemini we showed the options

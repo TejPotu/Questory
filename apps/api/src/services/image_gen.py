@@ -26,22 +26,34 @@ async def generate_image(prompt: str, is_character: bool = False) -> Optional[st
     try:
         client = genai.Client(api_key=api_key)
         
-        result = await client.aio.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=full_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio=aspect_ratio
+        # Use generate_content instead of generate_images for the 3.1-flash-image-preview model
+        response = await client.aio.models.generate_content(
+            model='gemini-3.1-flash-image-preview',
+            contents=[full_prompt],
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"]
             )
         )
         
-        if result.generated_images and len(result.generated_images) > 0:
-            image_bytes = result.generated_images[0].image.image_bytes
-            b64_data = base64.b64encode(image_bytes).decode('utf-8')
-            return f"data:image/jpeg;base64,{b64_data}"
+        candidates = response.candidates
+        if candidates and candidates[0].content:
+            parts = candidates[0].content.parts
+            for part in parts:
+                if part.inline_data:
+                    image_b64 = base64.b64encode(part.inline_data.data).decode("utf-8")
+                    return f"data:{part.inline_data.mime_type};base64,{image_b64}"
             
-        return None
+        print("Warning: Gemini returned no image inline_data.")
     except Exception as e:
         print(f"Error generating image with Gemini: {e}")
-        return None
+        print("Falling back to placeholder images because the image model failed.")
+
+    # Fallback if Gemini fails
+    import urllib.parse
+    if is_character:
+        # Generate a cool dynamic avatar using DiceBear based on the prompt
+        safe_prompt = urllib.parse.quote(prompt[:50])
+        return f"https://api.dicebear.com/7.x/bottts/svg?seed={safe_prompt}&backgroundColor=1e293b"
+    else:
+        # Fallback background
+        return "/dreamy_forest_scene.png"
