@@ -1,6 +1,7 @@
 import json
 import base64
 import asyncio
+import os
 from fastapi import WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
@@ -66,8 +67,10 @@ async def proxy_gemini_live_session(client_ws: WebSocket, session_id: str):
 
     try:
         # Initialize the google-genai client
-        # It automatically picks up GOOGLE_API_KEY / GEMINI_API_KEY from the environment
-        client = genai.Client()
+        # It automatically picks up GOOGLE_API_KEY / GEMINI_API_KEY from the environment,
+        # but we pass it explicitly here for robustness.
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        client = genai.Client(api_key=api_key)
         
         # Build config using dict format (recommended by the latest SDK docs)
         config = {
