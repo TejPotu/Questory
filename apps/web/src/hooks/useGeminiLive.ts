@@ -21,6 +21,15 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
     const audioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const processorNodeRef = useRef<AudioWorkletNode | null>(null);
+    const playbackAnalyserRef = useRef<AnalyserNode | null>(null);
+    const micAnalyserRef = useRef<AnalyserNode | null>(null);
+    const isThinkingRef = useRef(false);
+    const statusRef = useRef(status);
+
+    useEffect(() => {
+        isThinkingRef.current = isThinking;
+        statusRef.current = status;
+    }, [isThinking, status]);
 
     const nextPlayTimeRef = useRef<number>(0);
 
@@ -157,7 +166,12 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
 
             const source = ctx.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(ctx.destination);
+
+            if (playbackAnalyserRef.current) {
+                source.connect(playbackAnalyserRef.current);
+            } else {
+                source.connect(ctx.destination);
+            }
 
             const currentTime = ctx.currentTime;
             const playTime = Math.max(currentTime, nextPlayTimeRef.current);
@@ -201,10 +215,23 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
             audioContextRef.current = playbackCtx;
             nextPlayTimeRef.current = playbackCtx.currentTime;
 
+            // Setup Playback Analyser for AI Voice visualization
+            const playbackAnalyser = playbackCtx.createAnalyser();
+            playbackAnalyser.fftSize = 256;
+            playbackAnalyser.connect(playbackCtx.destination);
+            playbackAnalyserRef.current = playbackAnalyser;
+
             await micCtx.audioWorklet.addModule('/audio-processor.js');
             console.log('[Mic] AudioWorklet module loaded.');
 
             const source = micCtx.createMediaStreamSource(stream);
+
+            // Setup Mic Analyser for User Voice visualization
+            const micAnalyser = micCtx.createAnalyser();
+            micAnalyser.fftSize = 256;
+            source.connect(micAnalyser);
+            micAnalyserRef.current = micAnalyser;
+
             const processor = new AudioWorkletNode(micCtx, 'audio-processor');
 
             let chunkCount = 0;
@@ -288,5 +315,22 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate }: UseG
         }
     }, []);
 
-    return { status, gamePhase, setGamePhase, connect, disconnect, sendText, isThinking };
+    // Get current audio volume (0.0 to 1.0) for UI visualization
+    const getVolume = useCallback(() => {
+        let maxVolume = 0;
+        if (isThinkingRef.current && playbackAnalyserRef.current) {
+            const dataArray = new Uint8Array(playbackAnalyserRef.current.frequencyBinCount);
+            playbackAnalyserRef.current.getByteFrequencyData(dataArray);
+            const sum = dataArray.reduce((acc, val) => acc + val, 0);
+            maxVolume = sum / dataArray.length / 128;
+        } else if (!isThinkingRef.current && statusRef.current === 'connected' && micAnalyserRef.current) {
+            const dataArray = new Uint8Array(micAnalyserRef.current.frequencyBinCount);
+            micAnalyserRef.current.getByteFrequencyData(dataArray);
+            const sum = dataArray.reduce((acc, val) => acc + val, 0);
+            maxVolume = (sum / dataArray.length / 128) * 1.5; // Boost mic visually
+        }
+        return Math.min(maxVolume, 1.0);
+    }, []);
+
+    return { status, gamePhase, setGamePhase, connect, disconnect, sendText, isThinking, getVolume };
 }

@@ -1,14 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { Mic, MicOff, Loader2, FileUp, Link as LinkIcon, Shield, Rocket, Search, User, Play, Send } from 'lucide-react';
+import { Loader2, FileUp, Link as LinkIcon, Shield, Rocket, Search, User, Play, Send } from 'lucide-react';
 import { useGeminiLive } from '@/hooks/useGeminiLive';
+import { cn } from '@/lib/utils';
+
+const BACKGROUND_IMAGES = [
+    '/bg_enchanted_forest.png',
+    '/bg_underwater_city.png',
+    '/bg_magical_castle.png',
+    '/bg_space_station.png'
+];
 
 export function CreateStoryPage() {
     const navigate = useNavigate();
+    const avatarRef = useRef<HTMLDivElement>(null);
 
     // Core state
     const [topic, setTopic] = useState('');
@@ -21,7 +30,7 @@ export function CreateStoryPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // AI hook integration
-    const { status, gamePhase, setGamePhase, connect, disconnect, isThinking, sendText } = useGeminiLive({
+    const { status, gamePhase, setGamePhase, connect, disconnect, isThinking, sendText, getVolume } = useGeminiLive({
         onFunctionCall: (name, args) => {
             if (name === 'setTopic' && args.topic) setTopic(args.topic);
             if (name === 'setStyle') {
@@ -36,6 +45,45 @@ export function CreateStoryPage() {
     });
 
     const isConnected = status === 'connected';
+
+    // Background Carousel Logic
+    const [currentBgIndex, setCurrentBgIndex] = useState(0);
+
+    // Audio reactive animation loop for the Avatar (similar to Fairy)
+    useEffect(() => {
+        let animationId: number;
+        const animate = () => {
+            if (avatarRef.current && isConnected) {
+                const vol = getVolume();
+                // Base scale is 1, peaks up to 1.3 based on volume
+                const targetScale = 1 + (vol * 0.3);
+                // Glow spread correlates with volume
+                const glow = isThinking ? 30 + (vol * 60) : 10 + (vol * 30);
+
+                // We use Tailwind CSS variables to plug into the transform safely
+                avatarRef.current.style.setProperty('--tw-scale-x', targetScale.toString());
+                avatarRef.current.style.setProperty('--tw-scale-y', targetScale.toString());
+
+                // Provide a custom var for the blob glow behind the avatar
+                avatarRef.current.style.setProperty('--avatar-glow', `${glow}px`);
+
+            }
+            animationId = requestAnimationFrame(animate);
+        };
+
+        if (isConnected) {
+            animate();
+        }
+
+        return () => cancelAnimationFrame(animationId);
+    }, [isConnected, isThinking, getVolume]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentBgIndex((prev) => (prev + 1) % BACKGROUND_IMAGES.length);
+        }, 8000); // 8 seconds per image
+        return () => clearInterval(interval);
+    }, []);
 
     // Auto-connect on mount if we want to kickstart the interaction, or let user click mic.
     const toggleVoice = () => {
@@ -87,40 +135,76 @@ export function CreateStoryPage() {
 
     return (
         <div className="flex-1 w-full h-screen relative overflow-hidden bg-slate-900 flex justify-center items-center">
-            {/* Immersive Game Background */}
-            <div
-                className="absolute inset-0 bg-cover bg-center animate-scroll-bg opacity-40 blur-sm mix-blend-luminosity scale-110"
-                style={{ backgroundImage: `url('/cartoon_adventure_bg.png')` }}
-            />
+            {/* Base dark layer */}
+            <div className="absolute inset-0 bg-slate-950 z-0" />
+
+            {/* Immersive Game Background Carousel */}
+            {BACKGROUND_IMAGES.map((bg, index) => (
+                <div
+                    key={bg}
+                    className={cn(
+                        "absolute inset-0 bg-cover bg-center transition-all duration-[3000ms] ease-in-out scale-105 z-0",
+                        index === currentBgIndex ? "opacity-100" : "opacity-0 scale-100"
+                    )}
+                    style={{ backgroundImage: `url('${bg}')` }}
+                />
+            ))}
+
+            {/* Cinematic Overlay for Readability */}
+            <div className="absolute inset-0 bg-slate-900/20 mix-blend-overlay pointer-events-none z-0" />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-900/20 to-slate-950/90 pointer-events-none z-0" />
+
             {/* Dynamic ambient glow based on thinking state */}
             <div className={`absolute inset-0 transition-opacity duration-1000 radial-gradient ${isThinking ? 'bg-indigo-900/40 opacity-100' : 'opacity-0'}`} />
 
-            {/* Central Gemini Orb / Voice Button */}
-            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center">
-                <Button
-                    onClick={toggleVoice}
-                    className={`h-24 w-24 rounded-full shadow-2xl flex items-center justify-center transition-all duration-500 ease-out border-4 ${isConnected
-                        ? isThinking
-                            ? 'bg-indigo-500/80 border-indigo-400 scale-110 shadow-[0_0_50px_-12px_rgba(99,102,241,1)]'
-                            : 'bg-indigo-600 border-indigo-500 scale-100'
-                        : 'bg-slate-800/80 border-slate-600 hover:bg-slate-700 hover:scale-105'
-                        }`}
-                >
-                    {isConnected ? (
-                        isThinking ? <Loader2 className="w-10 h-10 text-white animate-spin" /> : <Mic className="w-10 h-10 text-white animate-pulse" />
-                    ) : (
-                        <MicOff className="w-10 h-10 text-slate-400" />
-                    )}
-                </Button>
-                <div className="mt-4 text-center">
-                    <p className="text-white font-bold text-lg tracking-wide drop-shadow-md">
-                        {isConnected ? (isThinking ? "Gemini is thinking..." : "Gemini is listening...") : "Tap to activate Game Master"}
-                    </p>
-                </div>
+            {/* Central Voice Avatar - Floating at bottom right */}
+            <div className="absolute bottom-8 right-8 z-50 flex flex-col items-end gap-2 group">
+                {isConnected ? (
+                    <div
+                        ref={avatarRef}
+                        onClick={disconnect}
+                        className={cn(
+                            "relative cursor-pointer w-32 h-32 md:w-40 md:h-40 hover:scale-105 transition-transform duration-[50ms] rounded-full z-50 border-cherry-flow shadow-2xl transform",
+                            isThinking ? "border-[8px] animate-flow-fast" : "border-[4px] animate-flow-slow"
+                        )}
+                    >
+                        {/* Glowing effect behind avatar */}
+                        <div
+                            className={cn(
+                                "absolute inset-0 rounded-full blur-2xl animate-pulse pointer-events-none transition-all duration-300 ease-in-out -z-10",
+                                isThinking ? "bg-pink-500/70" : "bg-sky-500/70"
+                            )}
+                            style={{
+                                boxShadow: `0 0 var(--avatar-glow, 20px) var(--avatar-glow-color, ${isThinking ? '#f48fb1' : '#a1cfff'})`
+                            }}
+                        />
+                        <img
+                            src={isThinking ? "/game_master_speaking.png" : "/game_master_avatar.png"}
+                            alt="Game Master"
+                            className="relative z-10 w-full h-full rounded-full object-cover"
+                        />
+                    </div>
+                ) : (
+                    <div
+                        onClick={toggleVoice}
+                        className="relative cursor-pointer w-24 h-24 md:w-32 md:h-32 hover:scale-105 transition-transform duration-500 animate-sleep-breathe group z-50 rounded-full"
+                    >
+                        {/* Sleeping state - no border effects to resolve woofer bug */}
+                        <div className="absolute inset-0 rounded-full blur-xl bg-slate-700/50 animate-pulse pointer-events-none -z-10" />
+                        <img
+                            src="/game_master_sleeping.png"
+                            alt="Game Master Sleeping"
+                            className="relative z-10 w-full h-full rounded-full object-cover border-[4px] border-slate-600/50 shadow-2xl opacity-80 group-hover:opacity-100 transition-opacity"
+                        />
+                        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur-md text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl border border-slate-600 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">
+                            Tap to Wake
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Interactive Stage Area */}
-            <div className="w-full max-w-4xl px-6 relative z-10 mt-20">
+            <div className="w-full max-w-4xl px-6 relative z-20 mt-[-5rem]">
                 {gamePhase === 'topic' && (
                     <div className="animate-in zoom-in-95 fade-in duration-500 flex flex-col items-center space-y-10">
                         <div className="text-center space-y-2">
