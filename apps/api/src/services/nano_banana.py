@@ -1,43 +1,53 @@
-import os
-import httpx
+import base64
+import traceback
 from typing import Optional
+from google import genai
+from google.genai import types
 
-NANO_BANANA_API_URL = os.getenv("NANO_BANANA_API_URL", "https://api.nano-banana.example.com/generate")
-NANO_BANANA_API_KEY = os.getenv("NANO_BANANA_API_KEY", "")
 
 async def generate_dreamy_background(description: str) -> Optional[str]:
     """
-    Calls the Nano Banana API to generate a background image for the story scene.
-    Returns the image URL if successful, else None.
+    Uses Gemini image generation to create a background image for the story scene.
+    Returns a base64 data URL if successful, else None.
     """
-    if not NANO_BANANA_API_KEY:
-        print("Warning: NANO_BANANA_API_KEY is not set. Using fallback placeholder image.")
-        # Simulating network delay
-        import asyncio
-        await asyncio.sleep(2)
-        return "/dreamy_forest_scene.png" # Fallback to existing public asset
-
+    print(f"[Image] Generating scene for: {description[:80]}...")
     try:
-        async with httpx.AsyncClient() as client:
-            # Note: Replace with actual Nano Banana payload structure
-            payload = {
-                "prompt": f"A beautiful, immersive, slightly dreamy, kid-friendly 3D video game background scene: {description}",
-                "aspect_ratio": "16:9",
-                "style": "vibrant_3d"
-            }
-            
-            headers = {
-                "Authorization": f"Bearer {NANO_BANANA_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            
-            response = await client.post(NANO_BANANA_API_URL, json=payload, headers=headers, timeout=15.0)
-            response.raise_for_status()
-            
-            data = response.json()
-            # Assuming the API returns a 'url' field
-            return data.get("url")
-            
+        client = genai.Client()
+
+        prompt = (
+            f"A beautiful, immersive, slightly dreamy, kid-friendly image background "
+            f"scene and foreground with the description: {description}"
+        )
+
+        response = await client.aio.models.generate_content(
+            model="gemini-3.1-flash-image-preview",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"]
+            )
+        )
+
+        candidates = response.candidates
+        if not candidates:
+            print("[Image] Error: No candidates in response")
+            return "/dreamy_forest_scene.png"
+
+        parts = candidates[0].content.parts if candidates[0].content else []
+        print(f"[Image] Response has {len(parts)} part(s)")
+
+        for part in parts:
+            if part.inline_data:
+                print(f"[Image] Got image: {part.inline_data.mime_type}, {len(part.inline_data.data)} bytes")
+                image_b64 = base64.b64encode(part.inline_data.data).decode("utf-8")
+                return f"data:{part.inline_data.mime_type};base64,{image_b64}"
+            elif part.text:
+                print(f"[Image] Got text instead of image: {part.text[:100]}")
+
+        print("[Image] Warning: No image data found in any part")
+        return "/dreamy_forest_scene.png"
+
     except Exception as e:
-        print(f"Error generating image with Nano Banana: {e}")
-        return "/dreamy_forest_scene.png" # Fallback
+        print(f"[Image] ERROR: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return "/dreamy_forest_scene.png"
+

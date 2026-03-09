@@ -232,7 +232,12 @@ export function CreateStoryPage() {
         setIsSubmitting(true);
         setTimeout(() => {
             const sessionId = Math.random().toString(36).substring(7);
-            navigate(`/play/${sessionId}`);
+            navigate(`/build/${sessionId}`, {
+                state: {
+                    topic,
+                    heroName: character
+                }
+            });
         }, 1500);
     };
 

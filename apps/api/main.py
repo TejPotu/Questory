@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.routers import live_router
+from src.routers import image_router
+from src.routers import build_router
 
 app = FastAPI(title="Questory Backend")
 
@@ -19,6 +21,8 @@ app.add_middleware(
 )
 
 app.include_router(live_router.router, prefix="/api")
+app.include_router(image_router.router, prefix="/api")
+app.include_router(build_router.router, prefix="/api")
 
 @app.get("/health")
 async def health_check():

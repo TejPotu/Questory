@@ -128,6 +128,7 @@ async def proxy_gemini_live_session(client_ws: WebSocket, session_id: str):
             "speech_config": {
                 "voice_config": {
                     "prebuilt_voice_config": {
+                        # Available voices: "Aoede", "Puck", "Charon", "Kore", "Fenrir", "Briton"
                         "voice_name": "Aoede"
                     }
                 }
@@ -386,6 +387,7 @@ async def proxy_gemini_live_session(client_ws: WebSocket, session_id: str):
                 except Exception as e:
                     if not client_disconnected.is_set():
                         print(f"[{session_id}] Gemini receive error: {e}")
+                        client_disconnected.set()
 
             # Run both read loops concurrently
             await asyncio.gather(
