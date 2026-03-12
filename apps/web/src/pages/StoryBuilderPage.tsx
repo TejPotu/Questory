@@ -134,25 +134,66 @@ export function StoryBuilderPage() {
         connect,
         disconnect,
         sendText,
-        forceSendText,
         submitQuizAnswer,
         getVolume,
         manualReconnect,
     } = useStoryBuilder(sessionId ?? 'default');
 
-    const handleConcludeStory = useCallback(() => {
-        if (status === 'connected') {
-            forceSendText("SYSTEM DIRECTIVE: The player wishes to conclude the story now. Please wrap up the adventure in one or two sentences and invoke the story_complete tool.");
+    const handleConcludeStory = useCallback(async () => {
+        if (!sessionId) return;
+        setIsSaving(true);
+        
+        // 1. Immediately sever all websocket connections, totally skipping the Gemini closing prompt!
+        disconnect();
+
+        // 2. Call the forced completion + extraction endpoint.
+        try {
+            const res = await fetch(`http://localhost:8000/api/library/force-complete/${sessionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ panels })
+            });
+            if (res.ok) {
+                // 3. Immediately redirect to library
+                navigate('/library');
+            } else {
+                console.error("Failed to force complete the story.");
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSaving(false);
         }
-    }, [status, forceSendText]);
+    }, [sessionId, disconnect, navigate, panels]);
 
     const [textInput, setTextInput] = useState('');
     const [narrationLog, setNarrationLog] = useState<string[]>([]);
     const [volume, setVolume] = useState(0);
+    const [isSaving, setIsSaving] = useState(false);
+    const [hasSaved, setHasSaved] = useState(false);
 
     const panelsEndRef = useRef<HTMLDivElement>(null);
     const narrationEndRef = useRef<HTMLDivElement>(null);
     const volumeRafRef = useRef<number | null>(null);
+
+    const handleSaveToLibrary = useCallback(async () => {
+        if (!sessionId) return;
+        setIsSaving(true);
+        try {
+            const res = await fetch(`http://localhost:8000/api/library/save/${sessionId}`, {
+                method: 'POST'
+            });
+            if (res.ok) {
+                setHasSaved(true);
+            } else {
+                console.error("Failed to save story");
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSaving(false);
+        }
+    }, [sessionId]);
 
     useEffect(() => {
         if (!sessionId) {
@@ -365,6 +406,19 @@ export function StoryBuilderPage() {
                         <div className="bg-white border-2 border-black rounded-full px-4 py-1.5 font-comic text-sm text-black">
                             ⭐ Final Score: {score} PTS
                         </div>
+                        <button
+                            onClick={handleSaveToLibrary}
+                            disabled={isSaving || hasSaved}
+                            className={cn(
+                                "font-comic text-sm px-4 py-1.5 rounded-full border-2 border-black transition-colors flex items-center gap-2",
+                                hasSaved 
+                                    ? "bg-green-500 text-white cursor-not-allowed" 
+                                    : "bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+                            )}
+                        >
+                            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {hasSaved ? 'Saved to Library! ✓' : 'Save to Library'}
+                        </button>
                         <button
                             onClick={() => navigate('/create')}
                             className="bg-black text-yellow-400 font-comic text-sm px-4 py-1.5 rounded-full border-2 border-black hover:bg-slate-800 transition-colors"

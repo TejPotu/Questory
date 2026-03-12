@@ -27,3 +27,4 @@ __pycache__/
 backend/*
 CLAUDE.md
 backend
+apps/api/data/

@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { BookOpen, Loader2, Star } from 'lucide-react';
+import { getMediaUrl } from '@/lib/utils';
 
 interface StoryPanel {
     imageUrl?: string;
@@ -60,7 +61,7 @@ export function LibraryPage() {
                             <Card key={story.id} className="overflow-hidden bg-white border-4 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all">
                                 <div className="h-40 bg-zinc-100 flex items-center justify-center border-b-4 border-black relative overflow-hidden">
                                     {story.panels && story.panels.length > 0 && story.panels[0].imageUrl ? (
-                                        <img src={story.panels[0].imageUrl} alt="Cover" className="w-full h-full object-cover" />
+                                        <img src={getMediaUrl(story.panels[0].imageUrl)} alt="Cover" className="w-full h-full object-cover" />
                                     ) : (
                                         <BookOpen className="w-16 h-16 text-slate-300" />
                                     )}

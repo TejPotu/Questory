@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, Star, Target } from 'lucide-react';
 import { ComicPanel } from '@/components/comic/ComicPanel';
+import { getMediaUrl } from '@/lib/utils';
 
 interface StoryPanelData {
     panelId: string;
@@ -20,6 +21,7 @@ interface SavedStory {
     score?: number;
     closingNarration?: string;
     status: string;
+    is_permanently_saved?: boolean;
     panels: StoryPanelData[];
 }
 
@@ -27,6 +29,8 @@ export function StoryViewerPage() {
     const { sessionId } = useParams();
     const [story, setStory] = useState<SavedStory | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [hasSaved, setHasSaved] = useState(false);
 
     useEffect(() => {
         fetch(`http://localhost:8000/api/story-session/${sessionId}`)
@@ -40,6 +44,25 @@ export function StoryViewerPage() {
                 setIsLoading(false);
             });
     }, [sessionId]);
+
+    const handleSaveToLibrary = async () => {
+        if (!sessionId) return;
+        setIsSaving(true);
+        try {
+            const res = await fetch(`http://localhost:8000/api/library/save/${sessionId}`, {
+                method: 'POST'
+            });
+            if (res.ok) {
+                setHasSaved(true);
+            } else {
+                console.error("Failed to save story");
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     if (isLoading) {
         return (
@@ -98,6 +121,19 @@ export function StoryViewerPage() {
                             </span>
                         )}
                     </div>
+                    
+                    <button
+                        onClick={handleSaveToLibrary}
+                        disabled={isSaving || hasSaved || story.is_permanently_saved}
+                        className={`w-full font-comic text-sm px-4 py-2 mt-4 rounded-xl border-2 border-black transition-colors flex items-center justify-center gap-2 ${
+                            hasSaved || story.is_permanently_saved
+                                ? "bg-green-500 text-white cursor-not-allowed" 
+                                : "bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50"
+                        }`}
+                    >
+                        {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {hasSaved || story.is_permanently_saved ? 'Saved Permanently ✓' : 'Save to Library File'}
+                    </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto mb-6 pr-2">
@@ -134,12 +170,12 @@ export function StoryViewerPage() {
                              narration: panelData.narration,
                              speechBubble: panelData.speechBubble,
                              learningObjective: panelData.learningObjective,
-                             imageUrl: panelData.imageUrl,
+                             imageUrl: getMediaUrl(panelData.imageUrl),
                              imageStatus: panelData.imageUrl ? 'ready' as const : 'loading' as const,
                          };
                          return (
                             <div key={panelData.panelId} className="w-full flex justify-center">
-                               <ComicPanel panel={comicPanelState} index={index} />
+                               <ComicPanel panel={comicPanelState} isLatest={false} isSplash={index === 0} />
                             </div>
                          );
                     })}
