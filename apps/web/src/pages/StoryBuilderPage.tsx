@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { API_URL } from '@/config';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { Mic, MicOff, Send, BookOpen, Loader2 } from 'lucide-react';
 import {
@@ -156,7 +157,7 @@ export function StoryBuilderPage() {
         let pollTimer: number | null = null;
 
         const fetchStorySession = () => {
-            fetch(`http://localhost:8000/api/story-session/${sessionId}`)
+            fetch(`${API_URL}/api/story-session/${sessionId}`)
                 .then(async (response) => {
                     if (!response.ok) {
                         throw new Error(`Failed to load story session (${response.status})`);

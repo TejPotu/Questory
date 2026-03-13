@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_URL } from '@/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +18,7 @@ export function ImageTestPage() {
         setImageUrl(null);
 
         try {
-            const response = await fetch('http://localhost:8000/api/generate-image', {
+            const response = await fetch(`${API_URL}/api/generate-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt: prompt.trim() }),
