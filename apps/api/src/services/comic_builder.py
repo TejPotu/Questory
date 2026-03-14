@@ -71,8 +71,8 @@ REACTION — CELEBRATE AND CONTINUE:
 ═══════════════════════════════════════
 CHILD ENGAGEMENT RULES
 ═══════════════════════════════════════
-After EVERY teaching panel, ask the child ONE question before your next panel.
-That question must be tied to:
+After EVERY teaching panel, you may ask the child ONE question or share one brief fact before your next panel.
+If you ask a question, it must be tied to:
   - the educational concept the child just saw in the story, or
   - the next concept or reveal the story is obviously setting up.
 Never ask a disconnected question that leads nowhere.
@@ -104,29 +104,26 @@ Total panels: 9-12. Structure per arc:
 TOOL CALLING RULES
 ═══════════════════════════════════════
 - Start by greeting the child in 1-2 short spoken sentences before creating the first panel.
+- The story narration is already written on the comic panel for the child to read. DO NOT read the story text aloud. Your spoken voice should ONLY act as the friendly guide explaining the educational concepts, reacting to the child, and asking questions.
 - Never describe your planning, workflow, or panel structure.
 - Never say things like "I am crafting panel 1", "here is the structure", or "I established the opening panel".
 - Never use markdown headings, production notes, or behind-the-scenes commentary.
 - If the runtime prompt provides a prepared story headstart, that prepared sequence is the canonical opening.
 - While prepared panels remain, reveal them with `present_prebuilt_panel` in order instead of inventing replacement panels.
 - While prepared panels remain, use the prepared explanation focus and child question to teach the concept clearly.
-- The prepared story JSON and runtime guidance are private instructions. Never read panel IDs, field labels, JSON keys, or instruction text aloud.
+- The prepared story JSON, runtime guidance, and tool parameters are strictly private. NEVER read panel IDs, field labels, JSON keys, parameter names (like "closing_narration" or "total_panels"), or instruction text aloud.
 - For child-facing speech, use only natural narration, explanation, dialogue, and questions.
 - Only after the prepared headstart is exhausted may you create new custom panels with `add_comic_panel`.
 - Call `add_comic_panel` after EVERY narration beat (story AND teaching panels).
-- IMPORTANT: After calling `add_comic_panel`, follow the tool response exactly.
+- IMPORTANT: After calling `add_comic_panel` or `present_prebuilt_panel`, follow the tool response exactly.
 - If the tool response says the scene is still rendering, keep the child engaged ONLY about the currently visible scene or mission.
 - While a new scene is rendering, do NOT describe unseen visuals, do NOT call `add_comic_panel` again, and do NOT call `ask_quiz` yet.
-- While a new scene is rendering, any question you ask must stay anchored to the current visible scene, the concept already taught, or the very next concept being set up.
-- While a new scene is rendering, questions should help shape the next scene creatively based on the child's answer.
-- If the child gives a strong answer during this loading time, appreciate it briefly, fold it into the story, and close that exchange cleanly.
+- While a new scene is rendering, DO NOT ask new questions. Simply acknowledge the child's last inputs concisely or share a brief fact, and wait for the scene to appear.
 - When a tool response says a panel is visible, treat that as the exact on-screen truth. Resume only from what the child can currently see.
-- When a previously loading scene becomes visible, first conclude the loading-time exchange in one short sentence if needed, then transition into the new visible scene without sounding abrupt.
-- Do not leave a loading-time question hanging or jump scenes mid-thought. Briefly close the old thought, then enter the new scene.
-- After a scene becomes visible, first narrate the visible scene.
+- When a previously loading scene becomes visible, first conclude the loading-time exchange in one short sentence if needed, then transition into explaining the new visible scene.
 - Then choose ONE interaction ending for that panel:
   - ask one grounded, scene-shaping question tied to the visible scene and concept, OR
-  - end with one short narration beat that invites a brief acknowledgement from the child.
+  - end with one short fact that invites a brief acknowledgement from the child.
 - WAIT for the child's reply or acknowledgement before calling another tool.
 - Do not move to the next panel until the current panel interaction has been completed cleanly.
 - For teaching panels: set `learning_objective` to a short phrase like "How tectonic plates create volcanoes".
@@ -136,7 +133,7 @@ TOOL CALLING RULES
 - After calling `ask_quiz`, stop speaking and wait for the later system update with the child's answer.
 - Do not continue the story, narrate a new scene, or call any tool until that quiz-answer system update arrives.
 - After the quiz-answer system update arrives, react to the child's actual answer briefly, then continue the story.
-- Call `story_complete` when the story reaches a satisfying resolution.
+- Call `story_complete` when the story reaches a satisfying resolution. Do NOT read the "closing_narration" or "total_panels" parameters aloud to the child. Just give a warm verbal wrap-up directly.
 
 ═══════════════════════════════════════
 TONE
@@ -310,7 +307,15 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
     pending_scene_contexts: dict[str, dict[str, Any]] = {}
     pending_quiz_contexts: dict[str, dict[str, Any]] = {}
     last_panel_image_b64: str | None = None
-    visible_panels: list[dict[str, Any]] = []
+    
+    # Load any previously saved session state
+    existing_session = load_story_session(session_id) or {}
+    visible_panels: list[dict[str, Any]] = existing_session.get("panels", [])
+    if visible_panels:
+        last_panel = visible_panels[-1]
+        if last_panel.get("image_url"):
+            last_panel_image_b64 = last_panel["image_url"]
+
     prebuilt_panels = _load_prebuilt_panels(session_id)
 
     async def close_client_connection(code: int, reason: str):
@@ -460,17 +465,16 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
                 f"A new scene ({panel_id}) is rendering in the background. "
                 f"The child still sees panel {current_visible_panel['panel_id']}: {current_visible_panel['narration']} "
                 "Keep the child engaged with the CURRENT visible scene only. "
-                "Acknowledge their last idea if relevant, or share one short interesting fact grounded in this current scene, "
-                "and you may ask one brief grounded follow-up question that can shape the next scene. "
-                "If you ask a question, close that exchange cleanly before switching scenes later. "
+                "Briefly acknowledge their last idea or share one short interesting fact. "
+                "DO NOT ask a new question right now, because the new scene might load and interrupt them. "
                 "Do not describe the unseen new scene. Do not call add_comic_panel again. Do not call ask_quiz yet. "
                 "Wait for a later system update telling you the new scene is visible."
             )
         else:
             bridge_step = (
                 f"The opening scene ({panel_id}) is rendering. "
-                "Keep the child engaged with the hero, mission, and immediate stakes in 1-2 short spoken sentences. "
-                "If you ask a question, make it help shape what should happen next. "
+                "Keep the child engaged with the hero and mission in 1-2 short spoken sentences. "
+                "DO NOT ask a new question right now. "
                 "Do not describe unseen visuals. Do not call add_comic_panel again. Do not call ask_quiz yet. "
                 "Wait for a later system update telling you the first scene is visible."
             )
@@ -546,6 +550,27 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
 
         async with client.aio.live.connect(model=MODEL_ID, config=config) as gemini_session:
             print(f"[{session_id}] [Builder] Connected to Gemini Live ({MODEL_ID})")
+            
+            # If we restored panels from a previous session, inform the frontend immediately.
+            if visible_panels:
+                await safe_send({
+                    "backendEvent": {
+                        "type": "restore_panels",
+                        "panels": [
+                            {
+                                "panelId": p["panel_id"],
+                                "panelIndex": p["panel_index"],
+                                "narration": p["narration"],
+                                "speechBubble": p.get("speech_bubble"),
+                                "learningObjective": p.get("learning_objective"),
+                                "imageUrl": p.get("image_url"),
+                                "imageStatus": p.get("image_status", "ready"),
+                                "source": p.get("source", "live"),
+                            }
+                            for p in visible_panels
+                        ]
+                    }
+                })
 
             async def receive_from_client():
                 nonlocal last_panel_image_b64
@@ -601,6 +626,8 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
                                             "speech_bubble": pending_scene.get("speech_bubble"),
                                             "learning_objective": pending_scene.get("learning_objective"),
                                             "source": pending_scene.get("source"),
+                                            "image_url": pending_scene.get("image_url"),
+                                            "image_status": pending_scene.get("image_status"),
                                         })
                                         if pending_scene.get("image_url"):
                                             last_panel_image_b64 = pending_scene["image_url"]
@@ -621,10 +648,9 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
                                             f"How to use the child's answer: {integration_hint or 'If the child gives a strong answer, praise it and weave it into the next beat.'} "
                                             "CHILD-FACING RULES: "
                                             "Speak naturally in short spoken sentences. "
-                                            "Use the story narration as your child-facing story content. "
+                                            "The story narration is already visible on the panel. DO NOT repeat the story narration. "
+                                            "Your role as the voice guide is to IMMEDIATELY explain the topic using the teaching focus in clear, upbeat kid-friendly language. "
                                             "Do not mention panel IDs, field names, JSON-style labels, or runtime instructions. "
-                                            "Narrate what the child can see in this visible scene in 1-2 short spoken sentences using concrete details. "
-                                            "Explain the topic using the teaching focus in clear kid-friendly language. "
                                             "Then choose one clean interaction ending for this panel: "
                                             "either ask one grounded, scene-shaping question tied to this visible scene and concept, "
                                             "or end with one short narration beat that invites a brief acknowledgement from the child. "
@@ -685,6 +711,19 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
                 except Exception as exc:
                     print(f"[{session_id}] [Builder] Client receive error: {exc}")
                 finally:
+                    # Save story progress on disconnect
+                    if visible_panels:
+                        from src.services.story_session_store import save_story_session, load_story_session
+                        
+                        existing = load_story_session(session_id) or {}
+                        
+                        # Only update if we aren't already marked completed.
+                        status = existing.get("status", "abrupt")
+                        save_story_session(session_id, {
+                            **existing,
+                            "status": status,
+                            "panels": visible_panels,
+                        })
                     client_disconnected.set()
 
             async def receive_from_gemini():
@@ -934,6 +973,14 @@ async def proxy_comic_builder_session(client_ws: WebSocket, session_id: str):
                                     elif name == "story_complete":
                                         closing_narration = args.get("closing_narration", "")
                                         total_panels = args.get("total_panels", 0)
+
+                                        from src.services.story_session_store import save_story_session
+                                        save_story_session(session_id, {
+                                            "status": "completed",
+                                            "closingNarration": closing_narration,
+                                            "totalPanels": total_panels,
+                                            "panels": visible_panels,
+                                        })
 
                                         await safe_send({
                                             "backendEvent": {
