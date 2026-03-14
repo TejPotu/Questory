@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HelpCircle, Lightbulb, Map, CircleDot, Mic, Loader2 } from 'lucide-react';
 import { useGeminiLive } from '@/hooks/useGeminiLive';
 
@@ -33,7 +32,7 @@ const MOCK_SCENE = {
 };
 
 export function StoryPlayerPage() {
-    const { sessionId } = useParams();
+    const { sessionId: _sessionId } = useParams();
     const [activeFact, setActiveFact] = useState<string | null>(null);
     const [narration, setNarration] = useState("A sudden rustling in the giant ferns breaks the silence. A massive footprint, fresh in the mud, warns of a giant nearby.");
     const [bgImage, setBgImage] = useState('/dreamy_forest_scene.png');

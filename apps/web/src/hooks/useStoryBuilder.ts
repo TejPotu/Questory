@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useReducer } from 'react';
+import { WS_URL } from '@/config';
 
 export type BuilderStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 export type BuilderPhase =
@@ -817,7 +818,7 @@ export function useStoryBuilder(sessionId: string) {
             setStatus('reconnecting');
             setGuideTurnComplete(true);
             const newSessionId = Math.random().toString(36).substring(7);
-            const url = `ws://localhost:8000/api/build/${newSessionId}`;
+            const url = `${WS_URL}/api/build/${newSessionId}`;
             const ws = new WebSocket(url);
             wsRef.current = ws;
 
@@ -869,7 +870,7 @@ export function useStoryBuilder(sessionId: string) {
             setGuideTurnComplete(true);
             dispatch({ type: 'RESET_SESSION' });
 
-            const url = `ws://localhost:8000/api/build/${sessionId}`;
+            const url = `${WS_URL}/api/build/${sessionId}`;
             const ws = new WebSocket(url);
             wsRef.current = ws;
 

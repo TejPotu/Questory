@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { WS_URL } from '@/config';
 
 type GeminiLiveStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 type GamePhase = 'topic' | 'heroes' | 'style' | 'settings' | 'ready';
@@ -334,7 +335,7 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate, onHero
 
             const sessionId = Math.random().toString(36).substring(7);
             setCurrentSessionId(sessionId);
-            const url = `ws://localhost:8000/api/live/${sessionId}`;
+            const url = `${WS_URL}/api/live/${sessionId}`;
 
             const ws = new WebSocket(url);
             wsRef.current = ws;
@@ -377,7 +378,7 @@ export function useGeminiLive({ onMessage, onFunctionCall, onSceneUpdate, onHero
 
             const sessionId = Math.random().toString(36).substring(7);
             setCurrentSessionId(sessionId);
-            const url = `ws://localhost:8000/api/live/${sessionId}`;
+            const url = `${WS_URL}/api/live/${sessionId}`;
 
             const ws = new WebSocket(url);
             wsRef.current = ws;
